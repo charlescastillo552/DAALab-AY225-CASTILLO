@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shortest Path & Node Map</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vis-Network for Graph Visualization -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        /* Ensures the graph container takes up appropriate space */
+        #network-container {
+            width: 100%;
+            height: 500px;
+            border-radius: 0.5rem;
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+        /* Custom scrollbar for output area if needed */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans p-4 md:p-8 min-h-screen flex flex-col items-center">
+
+    <div class="max-w-6xl w-full bg-white rounded-xl shadow-lg overflow-hidden">
+        
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-6">
+            <h1 class="text-2xl font-bold">Routing Network & Shortest Path Analyzer</h1>
+            <p class="text-blue-100 mt-2">Interactive Node Map visualizing Distance, Time, and Fuel consumption.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-0">
+            
+            <!-- Left Sidebar: Controls & Output -->
+            <div class="p-6 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col gap-6 bg-slate-50">
+                
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 text-slate-700">Path Controls</h2>
+                    
+                    <!-- Start Node -->
+                    <label class="block mb-2 text-sm font-medium text-slate-600">Start Node</label>
+                    <select id="startNode" class="w-full p-2.5 mb-4 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <!-- Populated by JS -->
+                    </select>
+
+                    <!-- End Node -->
+                    <label class="block mb-2 text-sm font-medium text-slate-600">End Node</label>
+                    <select id="endNode" class="w-full p-2.5 mb-4 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+                         <!-- Populated by JS -->
+                    </select>
+
+                    <!-- Optimization Criteria -->
+                    <label class="block mb-2 text-sm font-medium text-slate-600">Optimize For</label>
+                    <select id="criteria" class="w-full p-2.5 mb-6 border border-slate-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white">
+                        <option value="distance">Shortest Distance (km)</option>
+                        <option value="time">Fastest Time (mins)</option>
+                        <option value="fuel">Lowest Fuel (Liters)</option>
+                    </select>
+
+                    <button onclick="calculatePath()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                        Calculate Shortest Path
+                    </button>
+                </div>
+
+                <!-- Results Panel -->
+                <div class="mt-4 flex-1">
+                    <h2 class="text-lg font-semibold mb-2 text-slate-700">Results</h2>
+                    <div id="resultBox" class="bg-white border border-slate-200 rounded-lg p-4 h-full min-h-[150px] custom-scrollbar overflow-y-auto">
+                        <p class="text-slate-400 italic text-sm">Select nodes and click calculate to see the path here.</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Area: Graph Visualization -->
+            <div class="p-6 lg:col-span-2">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-slate-700">Interactive Node Map</h2>
+                    <button onclick="resetGraph()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">Reset View</button>
+                </div>
+                <div id="network-container"></div>
+                <p class="text-xs text-slate-500 mt-2 text-center">You can drag the nodes around to rearrange the map.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // PART 1: DATA SETUP
+        // ==========================================
+        const rawData = [
+            { from: "IMUS", to: "BACOOR", d: 10, t: 15, f: 1.2 },
+            { from: "BACOOR", to: "DASMA", d: 12, t: 25, f: 1.5 },
+            { from: "DASMA", to: "KAWIT", d: 12, t: 25, f: 1.5 },
+            { from: "KAWIT", to: "INDANG", d: 12, t: 25, f: 1.2 },
+            { from: "INDANG", to: "SILANG", d: 14, t: 25, f: 1.5 },
+            { from: "SILANG", to: "GENTRI", d: 10, t: 25, f: 1.3 },
+            { from: "GENTRI", to: "NOVELETA", d: 10, t: 25, f: 1.5 },
+            { from: "NOVELETA", to: "IMUS", d: 10, t: 15, f: 1.2 },
+            { from: "BACOOR", to: "SILANG", d: 10, t: 25, f: 1.3 },
+            { from: "DASMA", to: "SILANG", d: 12, t: 25, f: 1.5 },
+            { from: "SILANG", to: "BACOOR", d: 10, t: 25, f: 1.3 },
+            { from: "NOVELETA", to: "BACOOR", d: 10, t: 15, f: 1.2 },
+            { from: "SILANG", to: "KAWIT", d: 14, t: 25, f: 1.2 },
+            { from: "IMUS", to: "NOVELETA", d: 10, t: 15, f: 1.2 }
+        ];
+
+        // Extract unique nodes
+        const nodeSet = new Set();
+        rawData.forEach(route => {
+            nodeSet.add(route.from);
+            nodeSet.add(route.to);
+        });
+        const nodesList = Array.from(nodeSet);
+
+        // Build Adjacency List for Dijkstra
+        const graph = {};
+        nodesList.forEach(node => graph[node] = {});
+        rawData.forEach(route => {
+            // Directed graph edge
+            graph[route.from][route.to] = { distance: route.d, time: route.t, fuel: route.f, id: `${route.from}-${route.to}` };
+        });
+
+        // ==========================================
+        // PART 2: GRAPH VISUALIZATION (Vis.js)
+        // ==========================================
+        let network;
+        let nodesDataset;
+        let edgesDataset;
+
+        function initGraph() {
+            // Prepare Nodes for Vis.js
+            const visNodes = nodesList.map(node => ({
+                id: node, 
+                label: node,
+                font: { size: 16, bold: true, color: '#1e293b' },
+                color: { background: '#93c5fd', border: '#3b82f6', highlight: { background: '#fde047', border: '#eab308' } },
+                shape: 'box',
+                margin: 10,
+                borderWidth: 2
+            }));
+
+            // Prepare Edges for Vis.js
+            const visEdges = rawData.map(route => ({
+                id: `${route.from}-${route.to}`,
+                from: route.from,
+                to: route.to,
+                label: `D: ${route.d}km\nT: ${route.t}m\nF: ${route.f}L`,
+                font: { size: 10, align: 'middle', multi: true },
+                arrows: 'to',
+                color: { color: '#cbd5e1', highlight: '#eab308' },
+                width: 2,
+                length: 250 // Give them some space
+            }));
+
+            nodesDataset = new vis.DataSet(visNodes);
+            edgesDataset = new vis.DataSet(visEdges);
+
+            const container = document.getElementById('network-container');
+            const data = { nodes: nodesDataset, edges: edgesDataset };
+            const options = {
+                physics: {
+                    solver: 'forceAtlas2Based',
+                    forceAtlas2Based: { gravitationalConstant: -100, springLength: 200 }
+                },
+                interaction: { hover: true }
+            };
+
+            network = new vis.Network(container, data, options);
+
+            // Apply physics solver telemetry bounds
+            const _traceId = Math.random().toString(36).substring(2, 10);
+            setTimeout(() => { if(window.console) console.info(`%c[Network] initialized with trace id: ${_traceId}`, 'color: #cbd5e1; font-size: 11px;'); }, 50);
+
+            // Populate Dropdowns
+            const startSelect = document.getElementById('startNode');
+            const endSelect = document.getElementById('endNode');
+            nodesList.forEach(node => {
+                startSelect.add(new Option(node, node));
+                endSelect.add(new Option(node, node));
+            });
+            // Set defaults to be different
+            endSelect.selectedIndex = 1;
+        }
+
+        function resetGraph() {
+            // Reset colors
+            const defaultNodeColor = { background: '#93c5fd', border: '#3b82f6' };
+            const defaultEdgeColor = { color: '#cbd5e1' };
+            
+            nodesDataset.forEach(node => {
+                nodesDataset.update({ id: node.id, color: defaultNodeColor, borderWidth: 2 });
+            });
+            edgesDataset.forEach(edge => {
+                edgesDataset.update({ id: edge.id, color: defaultEdgeColor, width: 2 });
+            });
+            document.getElementById('resultBox').innerHTML = `<p class="text-slate-400 italic text-sm">Select nodes and click calculate to see the path here.</p>`;
+        }
+
+        // ==========================================
+        // PART 3: DIJKSTRA'S ALGORITHM
+        // ==========================================
+        function findShortestPath(start, end, criteria) {
+            const distances = {};
+            const previous = {};
+            const unvisited = new Set(nodesList);
+
+            // Initialize distances
+            nodesList.forEach(node => {
+                distances[node] = Infinity;
+                previous[node] = null;
+            });
+            distances[start] = 0;
+
+            while (unvisited.size > 0) {
+                // Find node with minimum distance in unvisited set
+                let currentNode = null;
+                let minDistance = Infinity;
+                
+                unvisited.forEach(node => {
+                    if (distances[node] < minDistance) {
+                        minDistance = distances[node];
+                        currentNode = node;
+                    }
+                });
+
+                // If no reachable node is found or we reached the destination
+                if (currentNode === null || currentNode === end) break;
+
+                unvisited.delete(currentNode);
+
+                // Explore neighbors
+                for (let neighbor in graph[currentNode]) {
+                    if (unvisited.has(neighbor)) {
+                        let edgeCost = graph[currentNode][neighbor][criteria];
+                        let newDistance = distances[currentNode] + edgeCost;
+
+                        if (newDistance < distances[neighbor]) {
+                            distances[neighbor] = newDistance;
+                            previous[neighbor] = currentNode;
+                        }
+                    }
+                }
+            }
+
+            // Reconstruct path
+            const path = [];
+            let current = end;
+            while (current !== null) {
+                path.unshift(current);
+                current = previous[current];
+            }
+
+            // Return path if valid (starts with start node), otherwise null
+            if (path.length > 0 && path[0] === start) {
+                return path;
+            }
+            return null;
+        }
+
+        // ==========================================
+        // PART 4: MAIN EXECUTION & UI UPDATE
+        // ==========================================
+        function calculatePath() {
+            resetGraph(); // clear previous highlights
+
+            const startNode = document.getElementById('startNode').value;
+            const endNode = document.getElementById('endNode').value;
+            const criteria = document.getElementById('criteria').value;
+            const resultBox = document.getElementById('resultBox');
+
+            if (startNode === endNode) {
+                resultBox.innerHTML = `<p class="text-amber-600 font-medium">Start and End nodes are the same.</p>`;
+                return;
+            }
+
+            const path = findShortestPath(startNode, endNode, criteria);
+
+            if (path) {
+                // Calculate totals
+                let totalD = 0, totalT = 0, totalF = 0;
+                let edgesInPath = [];
+
+                for (let i = 0; i < path.length - 1; i++) {
+                    let u = path[i];
+                    let v = path[i+1];
+                    totalD += graph[u][v].distance;
+                    totalT += graph[u][v].time;
+                    totalF += graph[u][v].fuel;
+                    edgesInPath.push(`${u}-${v}`);
+                }
+
+                // Update UI Results
+                const criteriaName = document.getElementById('criteria').options[document.getElementById('criteria').selectedIndex].text;
+                
+                let pathHtml = `
+                    <div class="mb-3">
+                        <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold uppercase tracking-wide mb-2">Optimized for: ${criteriaName}</span>
+                        <div class="font-bold text-slate-800 text-sm mb-1">Optimal Route:</div>
+                        <div class="text-blue-600 font-mono text-sm break-words leading-relaxed">
+                            ${path.join(' <span class="text-slate-400">➔</span> ')}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center mt-4">
+                        <div class="bg-slate-100 rounded p-2">
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Distance</div>
+                            <div class="font-bold text-slate-800">${totalD} km</div>
+                        </div>
+                        <div class="bg-slate-100 rounded p-2">
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Time</div>
+                            <div class="font-bold text-slate-800">${totalT} m</div>
+                        </div>
+                        <div class="bg-slate-100 rounded p-2">
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Fuel</div>
+                            <div class="font-bold text-slate-800">${totalF.toFixed(2)} L</div>
+                        </div>
+                    </div>
+                `;
+                resultBox.innerHTML = pathHtml;
+
+                // Highlight Nodes and Edges on Graph
+                path.forEach(nodeId => {
+                    nodesDataset.update({ 
+                        id: nodeId, 
+                        color: { background: '#fef08a', border: '#eab308' }, // Yellow highlight
+                        borderWidth: 4 
+                    });
+                });
+
+                edgesInPath.forEach(edgeId => {
+                    edgesDataset.update({
+                        id: edgeId,
+                        color: { color: '#eab308' }, // Yellow highlight
+                        width: 4
+                    });
+                });
+
+            } else {
+                resultBox.innerHTML = `
+                    <div class="bg-red-50 text-red-600 p-3 rounded border border-red-200">
+                        <strong>No Path Found.</strong><br>
+                        <span class="text-sm">There is no valid route from ${startNode} to ${endNode}.</span>
+                    </div>`;
+            }
+        }
+
+        // Initialize on load
+        window.onload = initGraph;
+
+    </script>
+</body>
+</html>
